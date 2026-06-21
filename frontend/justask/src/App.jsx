@@ -1,16 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useDropzone } from 'react-dropzone'
+import { Routes, Route, useLocation } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import toast from 'react-hot-toast'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   Upload, FileText, Send, Sparkles, Trash2,
   MessageSquare, Clock, Zap, Bot, User,
-  CheckCircle, Loader, XCircle, ArrowLeft, Trash
+  CheckCircle, Loader, XCircle, ArrowLeft, Trash, Sun, Moon
 } from 'lucide-react'
 import {
   uploadDocument, listDocuments, deleteDocument,
   streamQuery, getHealth
 } from './services/api'
+import LandingPage from './LandingPage'
 import './App.css'
 
 const MAX_MESSAGES = 50
@@ -24,6 +27,7 @@ function App() {
   const [inputValue, setInputValue] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [healthStatus, setHealthStatus] = useState('checking')
+  const [theme, setTheme] = useState(() => localStorage.getItem('justask_theme') || 'light')
   
   const chatEndRef = useRef(null)
   const inputRef = useRef(null)
@@ -39,6 +43,11 @@ function App() {
     const interval = setInterval(checkHealth, 30000)
     return () => clearInterval(interval)
   }, [])
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    localStorage.setItem('justask_theme', theme)
+  }, [theme])
 
   useEffect(() => {
     if (selectedDocId) {
@@ -247,12 +256,18 @@ function App() {
 
   const activeDoc = documents.find(d => d.id === selectedDocId)
   const currentMessages = selectedDocId ? (allMessages[selectedDocId] || []) : []
+  const location = useLocation()
 
-  // ═══════════════════════════════════════════════════════════════════
-  // RENDER
-  // ═══════════════════════════════════════════════════════════════════
-  return (
-    <div className="app">
+  // Main app content (extracted so we can wrap it in a route)
+  const appContent = (
+    <motion.div
+      className="app"
+      key="app"
+      initial={{ opacity: 0, scale: 0.97 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.97 }}
+      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+    >
       {/* ── Sidebar ────────────────────────────────────────────────── */}
       <aside className="sidebar" id="sidebar">
         <div className="sidebar-header" onClick={() => setSelectedDocId(null)} style={{ cursor: 'pointer' }}>
@@ -346,34 +361,109 @@ function App() {
               </div>
             )}
           </div>
-          <div className="health-indicator">
-            <span className={`health-dot ${healthStatus}`} />
-            <span>
-              {healthStatus === 'healthy' ? 'All systems operational' :
-               healthStatus === 'degraded' ? 'Partially available' :
-               healthStatus === 'checking' ? 'Connecting...' :
-               'Backend offline'}
-            </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <motion.button
+              className="theme-toggle-btn"
+              onClick={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
+              style={{
+                background: 'var(--surface)',
+                border: 'var(--border-width) solid var(--border)',
+                borderRadius: 'var(--radius-md)',
+                width: '36px', height: '36px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer',
+                boxShadow: 'var(--shadow-sm)'
+              }}
+              title="Toggle Theme"
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9, rotate: 180 }}
+              transition={{ duration: 0.3 }}
+            >
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={theme}
+                  initial={{ rotate: -90, opacity: 0 }}
+                  animate={{ rotate: 0, opacity: 1 }}
+                  exit={{ rotate: 90, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {theme === 'light' ? <Moon size={18} color="var(--text-primary)" /> : <Sun size={18} color="var(--text-primary)" />}
+                </motion.div>
+              </AnimatePresence>
+            </motion.button>
+            <div className="health-indicator">
+              <span className={`health-dot ${healthStatus}`} />
+              <span>
+                {healthStatus === 'healthy' ? 'All systems operational' :
+                 healthStatus === 'degraded' ? 'Partially available' :
+                 healthStatus === 'checking' ? 'Connecting...' :
+                 'Backend offline'}
+              </span>
+            </div>
           </div>
         </header>
 
         {/* View Routing */}
         {!selectedDocId ? (
           /* ── Home Page Dashboard ── */
-          <div className="home-dashboard">
+          <motion.div 
+            className="home-dashboard"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5 }}
+          >
             <div className="hero-section">
-              <div className="hero-icon">
+              <motion.div 
+                className="hero-icon"
+                initial={{ scale: 0, rotate: -180 }}
+                animate={{ scale: 1, rotate: 0 }}
+                transition={{ type: "spring", stiffness: 260, damping: 20, delay: 0.1 }}
+              >
                 <Sparkles size={48} />
-              </div>
-              <h1 className="hero-title">Welcome to Just Ask</h1>
-              <p className="hero-subtitle">
+              </motion.div>
+              <motion.h1 
+                className="hero-title"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2, duration: 0.5 }}
+              >
+                Welcome to Just Ask
+              </motion.h1>
+              <motion.p 
+                className="hero-subtitle"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3, duration: 0.5 }}
+              >
                 Your secure, AI-powered knowledge base. Upload PDF documents and interact with them instantly. Our advanced Retrieval-Augmented Generation (RAG) pipeline ensures that every answer is accurate, contextual, and fully cited from your own data.
-              </p>
+              </motion.p>
             </div>
             
-            <div className="dashboard-grid">
+            <motion.div 
+              className="dashboard-grid"
+              initial="hidden"
+              animate="visible"
+              variants={{
+                hidden: { opacity: 0 },
+                visible: {
+                  opacity: 1,
+                  transition: {
+                    staggerChildren: 0.1,
+                    delayChildren: 0.4
+                  }
+                }
+              }}
+            >
               {documents.map(doc => (
-                <div key={doc.id} className="dash-card" onClick={() => setSelectedDocId(doc.id)}>
+                <motion.div 
+                  key={doc.id} 
+                  className="dash-card" 
+                  onClick={() => setSelectedDocId(doc.id)}
+                  variants={{
+                    hidden: { opacity: 0, y: 40 },
+                    visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }
+                  }}
+                >
                   <div className="dash-card-icon">
                     <FileText size={32} />
                   </div>
@@ -385,10 +475,10 @@ function App() {
                     <MessageSquare size={16} />
                     <span>Chat</span>
                   </div>
-                </div>
+                </motion.div>
               ))}
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         ) : (
           /* ── Chat View ── */
           <>
@@ -496,8 +586,18 @@ function App() {
           </>
         )}
       </main>
-    </div>
+    </motion.div>
+  )
+
+  return (
+    <AnimatePresence mode="wait">
+      <Routes location={location} key={location.pathname}>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/upload" element={appContent} />
+      </Routes>
+    </AnimatePresence>
   )
 }
 
 export default App
+
