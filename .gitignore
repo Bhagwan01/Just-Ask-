@@ -40,6 +40,11 @@ frontend/justask/dist/
 
 # Build
 build/
-```
-# testing files
-dl-curriculum.pdf/
+
+# Data directories (contain user uploads and DB)
+backend/data/
+backend/models/
+backend/logs/
+
+# Testing files
+dl-curriculum.pdf

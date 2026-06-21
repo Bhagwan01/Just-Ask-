@@ -1,0 +1,23 @@
+# Backend Docker ignore
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.git/
+.gitignore
+venv/
+.venv/
+env/
+.env
+.env.local
+*.log
+.pytest_cache/
+.coverage
+htmlcov/
+.vscode/
+.idea/
+*.md
+tests/
+data/
+models/
+logs/

@@ -1,121 +1,502 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useDropzone } from 'react-dropzone'
+import ReactMarkdown from 'react-markdown'
+import toast from 'react-hot-toast'
+import {
+  Upload, FileText, Send, Sparkles, Trash2,
+  MessageSquare, Clock, Zap, Bot, User,
+  CheckCircle, Loader, XCircle, ArrowLeft, Trash
+} from 'lucide-react'
+import {
+  uploadDocument, listDocuments, deleteDocument,
+  streamQuery, getHealth
+} from './services/api'
 import './App.css'
 
+const MAX_MESSAGES = 50
+
 function App() {
-  const [count, setCount] = useState(0)
+  // ── State ─────────────────────────────────────────────────────────
+  const [documents, setDocuments] = useState([])
+  const [allMessages, setAllMessages] = useState({}) // { docId: [messages] }
+  const [selectedDocId, setSelectedDocId] = useState(null)
+  
+  const [inputValue, setInputValue] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [healthStatus, setHealthStatus] = useState('checking')
+  
+  const chatEndRef = useRef(null)
+  const inputRef = useRef(null)
 
+  // ── Effects ───────────────────────────────────────────────────────
+  useEffect(() => {
+    loadDocuments()
+    checkHealth()
+    const savedChats = localStorage.getItem('justask_chats')
+    if (savedChats) {
+      try { setAllMessages(JSON.parse(savedChats)) } catch(e) { console.error(e) }
+    }
+    const interval = setInterval(checkHealth, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    if (selectedDocId) {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [allMessages, selectedDocId])
+
+  // ── API Calls ─────────────────────────────────────────────────────
+  async function loadDocuments() {
+    try {
+      const data = await listDocuments()
+      setDocuments(data.documents || [])
+    } catch {
+      /* Backend not ready yet */
+    }
+  }
+
+  async function checkHealth() {
+    try {
+      const data = await getHealth()
+      setHealthStatus(data.status)
+    } catch {
+      setHealthStatus('unhealthy')
+    }
+  }
+
+  // ── File Upload ───────────────────────────────────────────────────
+  const onDrop = useCallback(async (acceptedFiles) => {
+    for (const file of acceptedFiles) {
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
+        toast.error(`"${file.name}" is not a PDF file`)
+        continue
+      }
+
+      const toastId = toast.loading(`Uploading ${file.name}...`)
+      try {
+        await uploadDocument(file)
+        toast.success(`"${file.name}" uploaded! Processing...`, { id: toastId })
+        loadDocuments()
+
+        const pollInterval = setInterval(async () => {
+          await loadDocuments()
+        }, 3000)
+        setTimeout(() => clearInterval(pollInterval), 60000)
+      } catch (err) {
+        toast.error(err.message || 'Upload failed', { id: toastId })
+      }
+    }
+  }, [])
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: { 'application/pdf': ['.pdf'] },
+    multiple: true,
+  })
+
+  // ── Delete Document ───────────────────────────────────────────────
+  async function handleDeleteDocument(id, name, e) {
+    e.stopPropagation()
+    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return
+
+    try {
+      await deleteDocument(id)
+      toast.success(`"${name}" deleted`)
+      if (selectedDocId === id) setSelectedDocId(null)
+      
+      // Cleanup chat history
+      setAllMessages(prev => {
+        const next = { ...prev }
+        delete next[id]
+        localStorage.setItem('justask_chats', JSON.stringify(next))
+        return next
+      })
+      
+      loadDocuments()
+    } catch (err) {
+      toast.error(err.message || 'Delete failed')
+    }
+  }
+
+  // ── Clear Chat ────────────────────────────────────────────────────
+  function handleClearChat() {
+    if (!selectedDocId) return
+    if (!confirm('Clear chat history for this document?')) return
+    
+    setAllMessages(prev => {
+      const next = { ...prev }
+      delete next[selectedDocId]
+      localStorage.setItem('justask_chats', JSON.stringify(next))
+      return next
+    })
+  }
+
+  // ── Send Query ────────────────────────────────────────────────────
+  async function handleSendQuery(queryText) {
+    const query = (queryText || inputValue).trim()
+    if (!query || isLoading || !selectedDocId) return
+
+    setInputValue('')
+    setIsLoading(true)
+
+    const userMsg = { role: 'user', content: query, timestamp: new Date() }
+    const assistantMsg = {
+      role: 'assistant', content: '', sources: [], latency_ms: null,
+      timestamp: new Date(), isStreaming: true
+    }
+
+    setAllMessages(prev => {
+      let docMsgs = prev[selectedDocId] || []
+      docMsgs = [...docMsgs, userMsg, assistantMsg]
+      if (docMsgs.length > MAX_MESSAGES) docMsgs = docMsgs.slice(-MAX_MESSAGES)
+      const next = { ...prev, [selectedDocId]: docMsgs }
+      localStorage.setItem('justask_chats', JSON.stringify(next))
+      return next
+    })
+
+    try {
+      await streamQuery(
+        query, 5, [selectedDocId],
+        (token) => {
+          setAllMessages(prev => {
+            const next = { ...prev }
+            const docMsgs = [...(next[selectedDocId] || [])]
+            const last = docMsgs[docMsgs.length - 1]
+            if (last && last.role === 'assistant') {
+              docMsgs[docMsgs.length - 1] = { ...last, content: last.content + token }
+            }
+            next[selectedDocId] = docMsgs
+            return next
+          })
+        },
+        (data) => {
+          setAllMessages(prev => {
+            const next = { ...prev }
+            const docMsgs = [...(next[selectedDocId] || [])]
+            const last = docMsgs[docMsgs.length - 1]
+            if (last && last.role === 'assistant') {
+              docMsgs[docMsgs.length - 1] = {
+                ...last, sources: data.sources || [], latency_ms: data.latency_ms, isStreaming: false
+              }
+            }
+            next[selectedDocId] = docMsgs
+            localStorage.setItem('justask_chats', JSON.stringify(next))
+            return next
+          })
+          setIsLoading(false)
+        },
+        (error) => {
+          setAllMessages(prev => {
+            const next = { ...prev }
+            const docMsgs = [...(next[selectedDocId] || [])]
+            const last = docMsgs[docMsgs.length - 1]
+            if (last && last.role === 'assistant') {
+              docMsgs[docMsgs.length - 1] = {
+                ...last, content: `Sorry, an error occurred: ${error}`, isStreaming: false
+              }
+            }
+            next[selectedDocId] = docMsgs
+            localStorage.setItem('justask_chats', JSON.stringify(next))
+            return next
+          })
+          setIsLoading(false)
+          toast.error(error)
+        }
+      )
+    } catch (err) {
+      setAllMessages(prev => {
+        const next = { ...prev }
+        const docMsgs = [...(next[selectedDocId] || [])]
+        const last = docMsgs[docMsgs.length - 1]
+        if (last && last.role === 'assistant') {
+          docMsgs[docMsgs.length - 1] = {
+            ...last, content: `Sorry, I couldn't process your question. ${err.message || 'Please try again.'}`, isStreaming: false
+          }
+        }
+        next[selectedDocId] = docMsgs
+        localStorage.setItem('justask_chats', JSON.stringify(next))
+        return next
+      })
+      setIsLoading(false)
+    }
+  }
+
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSendQuery()
+    }
+  }
+
+  // ── Format file size ──────────────────────────────────────────────
+  function formatSize(bytes) {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  }
+
+  function StatusIcon({ status }) {
+    switch (status) {
+      case 'completed': return <CheckCircle size={12} />
+      case 'processing': return <Loader size={12} className="spinning" />
+      case 'failed': return <XCircle size={12} />
+      default: return <Clock size={12} />
+    }
+  }
+
+  const activeDoc = documents.find(d => d.id === selectedDocId)
+  const currentMessages = selectedDocId ? (allMessages[selectedDocId] || []) : []
+
+  // ═══════════════════════════════════════════════════════════════════
+  // RENDER
+  // ═══════════════════════════════════════════════════════════════════
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <div className="app">
+      {/* ── Sidebar ────────────────────────────────────────────────── */}
+      <aside className="sidebar" id="sidebar">
+        <div className="sidebar-header" onClick={() => setSelectedDocId(null)} style={{ cursor: 'pointer' }}>
+          <div className="sidebar-logo">
+            <Zap size={18} />
+          </div>
+          <div>
+            <div className="sidebar-title">Just Ask</div>
+            <div className="sidebar-subtitle">AI Document Assistant</div>
+          </div>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
+
+        {/* Upload Zone */}
+        <div
+          {...getRootProps()}
+          className={`upload-zone ${isDragActive ? 'drag-active' : ''}`}
+          id="upload-zone"
         >
-          Count is {count}
-        </button>
-      </section>
-
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+          <input {...getInputProps()} id="file-input" />
+          <div className="upload-zone-icon">
+            <Upload size={24} />
+          </div>
+          <div className="upload-zone-text">
+            <strong>Drop PDFs here</strong>
+          </div>
+          <div className="upload-zone-hint">Max 50MB per file</div>
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+        {/* Document List */}
+        <div className="doc-list-header">
+          <span>Your Documents</span>
+          <span className="doc-list-count">{documents.length}</span>
+        </div>
+
+        <div className="doc-list" id="document-list">
+          {documents.length === 0 ? (
+            <div className="doc-empty-state">
+              No documents uploaded yet
+            </div>
+          ) : (
+            documents.map(doc => (
+              <div 
+                key={doc.id} 
+                className={`doc-item ${selectedDocId === doc.id ? 'active' : ''}`}
+                onClick={() => setSelectedDocId(doc.id)}
+              >
+                <div className="doc-item-icon">
+                  <FileText size={16} />
+                </div>
+                <div className="doc-item-info">
+                  <div className="doc-item-name" title={doc.original_filename || doc.filename}>
+                    {doc.original_filename || doc.filename}
+                  </div>
+                  <div className="doc-item-meta">
+                    <span className={`doc-item-status ${doc.status}`}>
+                      <StatusIcon status={doc.status} />
+                      {doc.status}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  className="doc-item-delete"
+                  onClick={(e) => handleDeleteDocument(doc.id, doc.original_filename || doc.filename, e)}
+                  title="Delete document"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </aside>
+
+      {/* ── Main Content ──────────────────────────────────────────── */}
+      <main className="main-content">
+        {/* Header */}
+        <header className="main-header">
+          <div className="main-header-left">
+            {selectedDocId ? (
+              <div className="chat-header-title">
+                <button className="back-btn" onClick={() => setSelectedDocId(null)}>
+                  <ArrowLeft size={18} />
+                </button>
+                <div className="chat-header-info">
+                  <h2>{activeDoc?.original_filename || activeDoc?.filename || 'Chat'}</h2>
+                </div>
+              </div>
+            ) : (
+              <div className="main-header-title">
+                <h1>Dashboard</h1>
+              </div>
+            )}
+          </div>
+          <div className="health-indicator">
+            <span className={`health-dot ${healthStatus}`} />
+            <span>
+              {healthStatus === 'healthy' ? 'All systems operational' :
+               healthStatus === 'degraded' ? 'Partially available' :
+               healthStatus === 'checking' ? 'Connecting...' :
+               'Backend offline'}
+            </span>
+          </div>
+        </header>
+
+        {/* View Routing */}
+        {!selectedDocId ? (
+          /* ── Home Page Dashboard ── */
+          <div className="home-dashboard">
+            <div className="hero-section">
+              <div className="hero-icon">
+                <Sparkles size={48} />
+              </div>
+              <h1 className="hero-title">Welcome to Just Ask</h1>
+              <p className="hero-subtitle">
+                Your secure, AI-powered knowledge base. Upload PDF documents and interact with them instantly. Our advanced Retrieval-Augmented Generation (RAG) pipeline ensures that every answer is accurate, contextual, and fully cited from your own data.
+              </p>
+            </div>
+            
+            <div className="dashboard-grid">
+              {documents.map(doc => (
+                <div key={doc.id} className="dash-card" onClick={() => setSelectedDocId(doc.id)}>
+                  <div className="dash-card-icon">
+                    <FileText size={32} />
+                  </div>
+                  <div className="dash-card-content">
+                    <h3>{doc.original_filename || doc.filename}</h3>
+                    <p>{formatSize(doc.file_size_bytes)} • {doc.total_chunks || 0} chunks</p>
+                  </div>
+                  <div className="dash-card-action">
+                    <MessageSquare size={16} />
+                    <span>Chat</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          /* ── Chat View ── */
+          <>
+            <div className="chat-area" id="chat-area">
+              {currentMessages.length === 0 ? (
+                <div className="chat-empty">
+                  <div className="chat-empty-icon">
+                    <MessageSquare size={36} color="white" />
+                  </div>
+                  <h2>Chat with {activeDoc?.original_filename || activeDoc?.filename}</h2>
+                  <p>Ask anything about this specific document. Your chat history is saved locally.</p>
+                  <div className="chat-empty-suggestions">
+                    {["Summarize this document", "What are the key findings?", "List the main entities"].map((s, i) => (
+                      <button key={i} className="suggestion-chip" onClick={() => {
+                        setInputValue(s)
+                        inputRef.current?.focus()
+                      }}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                currentMessages.map((msg, i) => (
+                  <div key={i} className={`chat-message ${msg.role}`} id={`msg-${i}`}>
+                    <div className={`message-avatar ${msg.role}`}>
+                      {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
+                    </div>
+                    <div>
+                      <div className={`message-content ${msg.role}`}>
+                        {msg.role === 'assistant' ? (
+                          <>
+                            {msg.content ? (
+                              <ReactMarkdown>{msg.content}</ReactMarkdown>
+                            ) : msg.isStreaming ? (
+                              <div className="typing-indicator">
+                                <div className="typing-dot" />
+                                <div className="typing-dot" />
+                                <div className="typing-dot" />
+                              </div>
+                            ) : null}
+                          </>
+                        ) : (
+                          msg.content
+                        )}
+                      </div>
+
+                      {msg.sources && msg.sources.length > 0 && (
+                        <div className="message-sources">
+                          <div className="message-sources-title">Sources ({msg.sources.length})</div>
+                          {msg.sources.map((src, j) => (
+                            <div key={j} className="source-card">
+                              <span className="source-page">Page {src.page_number}</span>
+                              <div className="source-info">
+                                <div className="source-snippet">{src.snippet}</div>
+                              </div>
+                              <span className="source-score">{(src.relevance_score * 100).toFixed(0)}%</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {msg.role === 'assistant' && msg.latency_ms && !msg.isStreaming && (
+                        <div className="message-meta">
+                          <span><Clock size={10} /> {msg.latency_ms.toFixed(0)}ms</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Input */}
+            <div className="chat-input-container">
+              <div className="chat-input-wrapper">
+                <button className="clear-chat-btn" onClick={handleClearChat} title="Clear Chat History">
+                  <Trash size={16} />
+                </button>
+                <textarea
+                  ref={inputRef}
+                  className="chat-input"
+                  placeholder={`Ask a question about ${activeDoc?.original_filename || activeDoc?.filename || 'this document'}...`}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  rows={1}
+                  id="query-input"
+                  disabled={isLoading}
+                />
+                <button
+                  className="send-button"
+                  onClick={() => handleSendQuery()}
+                  disabled={!inputValue.trim() || isLoading}
+                  id="send-button"
+                >
+                  {isLoading ? <div className="spinner" /> : <Send size={16} />}
+                </button>
+              </div>
+              <div className="chat-input-hint">
+                Press Enter to send · Shift+Enter for new line
+              </div>
+            </div>
+          </>
+        )}
+      </main>
+    </div>
   )
 }
 

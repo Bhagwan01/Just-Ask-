@@ -1,0 +1,88 @@
+# ================================================================
+# Just Ask — Docker Compose (Full Stack)
+# ================================================================
+# Services: Backend (FastAPI) + Frontend (Vite/Nginx)
+# ================================================================
+
+services:
+
+  # -- Database -----------------------------------------------------
+  db:
+    image: postgres:15-alpine
+    container_name: justask-postgres
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=justask
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -- Backend API --------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: justask-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=production
+      - DEBUG=false
+      - LOG_FORMAT=json
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/justask
+      # Make sure to export GROQ_API_KEY in your host environment before running docker compose
+      - GROQ_API_KEY=${GROQ_API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - backend_data:/app/data
+      - backend_models:/app/models
+      - backend_logs:/app/logs
+    networks:
+      - app-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health/live"]
+      interval: 30s
+      timeout: 10s
+      start_period: 120s
+      retries: 3
+
+  # -- Frontend (Vite Dev or Nginx Prod) ----------------------------
+  frontend:
+    build:
+      context: ./frontend/justask
+      dockerfile: Dockerfile
+    container_name: justask-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    restart: unless-stopped
+
+# -- Volumes -------------------------------------------------------
+volumes:
+  backend_data:
+    driver: local
+  backend_models:
+    driver: local
+  backend_logs:
+    driver: local
+  postgres_data:
+    driver: local
+
+# -- Networks ------------------------------------------------------
+networks:
+  app-network:
+    driver: bridge
