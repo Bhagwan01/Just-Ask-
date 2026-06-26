@@ -9,8 +9,6 @@ Provides:
 - DELETE /documents/{id} — Delete document
 """
 
-from __future__ import annotations
-
 import shutil
 import uuid
 from pathlib import Path
@@ -29,6 +27,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_app_settings, get_db_session, get_rag_service
+from app.core.limiter import limiter
 from app.core.exceptions import (
     DuplicatePDFError,
     DocumentNotFoundError,
@@ -84,6 +83,7 @@ async def _process_document_background(
     summary="Upload a PDF document",
     description="Uploads a PDF and initiates background processing (parsing, chunking, embedding).",
 )
+@limiter.limit("10/minute")
 async def upload_document(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -115,25 +115,32 @@ async def upload_document(
     safe_name = f"{uuid.uuid4().hex}_{Path(file.filename).stem}.pdf"
     file_path = upload_dir / safe_name
 
+    import hashlib
+    file_hash_obj = hashlib.sha256()
+
     try:
+        max_bytes = settings.pdf_max_file_size_mb * 1024 * 1024
+        file_size = 0
+        first_chunk = True
+
         with open(file_path, "wb") as buffer:
-            content = await file.read()
+            while chunk := await file.read(1024 * 1024):  # 1MB chunks
+                file_size += len(chunk)
+                if file_size > max_bytes:
+                    raise PDFTooLargeError(
+                        user_message=f"File size exceeds the maximum of {settings.pdf_max_file_size_mb}MB."
+                    )
 
-            # ── Validate file size ───────────────────────────────
-            file_size = len(content)
-            max_bytes = settings.pdf_max_file_size_mb * 1024 * 1024
-            if file_size > max_bytes:
-                raise PDFTooLargeError(
-                    user_message=f"File size ({file_size / (1024*1024):.1f}MB) exceeds the maximum of {settings.pdf_max_file_size_mb}MB."
-                )
+                # ── Validate magic bytes ─────────────────────────────
+                if first_chunk:
+                    if not chunk.startswith(b"%PDF"):
+                        raise InvalidPDFError(
+                            user_message="The uploaded file is not a valid PDF document."
+                        )
+                    first_chunk = False
 
-            # ── Validate magic bytes ─────────────────────────────
-            if not content.startswith(b"%PDF"):
-                raise InvalidPDFError(
-                    user_message="The uploaded file is not a valid PDF document."
-                )
-
-            buffer.write(content)
+                buffer.write(chunk)
+                file_hash_obj.update(chunk)
 
     except (PDFTooLargeError, InvalidPDFError):
         # Clean up the partial file
@@ -147,8 +154,7 @@ async def upload_document(
         raise HTTPException(status_code=500, detail="Failed to save file")
 
     # ── Create initial DB record ─────────────────────────────────
-    import hashlib
-    file_hash = hashlib.sha256(content).hexdigest()
+    file_hash = file_hash_obj.hexdigest()
 
     # Check for duplicate
     existing = await db_session.execute(

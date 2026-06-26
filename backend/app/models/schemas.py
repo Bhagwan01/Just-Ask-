@@ -112,6 +112,10 @@ class ChatRequest(BaseModel):
         default=None,
         description="Limit search to specific document IDs. None = search all.",
     )
+    history: Optional[List[Dict[str, str]]] = Field(
+        default=None,
+        description="Conversation history for context",
+    )
 
     @field_validator("query")
     @classmethod
@@ -136,6 +140,7 @@ class SourceCitation(BaseModel):
 
 class ChatResponse(BaseModel):
     """RAG pipeline response with citations."""
+    model_config = ConfigDict(protected_namespaces=())
 
     answer: str
     sources: List[SourceCitation] = []

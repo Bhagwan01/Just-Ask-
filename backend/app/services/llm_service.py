@@ -138,6 +138,7 @@ class LLMService:
         system_prompt: Optional[str] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        history: Optional[List[Dict[str, str]]] = None,
     ) -> str:
         """
         Generate a full response from Groq.
@@ -154,6 +155,15 @@ class LLMService:
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
+            
+        if history:
+            for msg in history[-6:]:  # Keep last 3 conversational turns
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role in ["user", "assistant"] and content:
+                    clean_content = self._sanitize_prompt(content) if role == "user" else content
+                    messages.append({"role": role, "content": clean_content})
+
         messages.append({"role": "user", "content": self._sanitize_prompt(prompt)})
 
         payload = {
@@ -198,6 +208,7 @@ class LLMService:
         system_prompt: Optional[str] = None,
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
+        history: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Stream tokens from Groq one at a time.
@@ -207,6 +218,15 @@ class LLMService:
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
+            
+        if history:
+            for msg in history[-6:]:  # Keep last 3 conversational turns
+                role = msg.get("role", "user")
+                content = msg.get("content", "")
+                if role in ["user", "assistant"] and content:
+                    clean_content = self._sanitize_prompt(content) if role == "user" else content
+                    messages.append({"role": role, "content": clean_content})
+
         messages.append({"role": "user", "content": self._sanitize_prompt(prompt)})
 
         payload = {
@@ -262,6 +282,7 @@ class LLMService:
         self,
         question: str,
         context_chunks: List[Dict],
+        history: Optional[List[Dict[str, str]]] = None,
     ) -> str:
         """
         Generate a RAG response with context from retrieved chunks.
@@ -293,12 +314,14 @@ class LLMService:
         return await self.generate(
             prompt=prompt,
             system_prompt=RAG_SYSTEM_PROMPT,
+            history=history,
         )
 
     async def generate_rag_stream(
         self,
         question: str,
         context_chunks: List[Dict],
+        history: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncGenerator[str, None]:
         """Stream a RAG response token by token."""
         context_parts = []
@@ -320,6 +343,7 @@ class LLMService:
         async for token in self.generate_stream(
             prompt=prompt,
             system_prompt=RAG_SYSTEM_PROMPT,
+            history=history,
         ):
             yield token
 

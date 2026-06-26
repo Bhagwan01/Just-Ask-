@@ -94,9 +94,10 @@ export async function queryDocuments(query, topK = 5, documentIds = null) {
   });
 }
 
-export async function streamQuery(query, topK = 5, documentIds = null, onToken, onDone, onError) {
+export async function streamQuery(query, topK = 5, documentIds = null, history = null, onToken, onDone, onError) {
   const body = { query, top_k: topK };
   if (documentIds) body.document_ids = documentIds;
+  if (history) body.history = history;
 
   try {
     const response = await fetch(`${API_BASE}/chat/stream`, {

@@ -19,6 +19,8 @@ import './App.css'
 const MAX_MESSAGES = 50
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(() => sessionStorage.getItem('justask_auth') === 'true')
+
   // ── State ─────────────────────────────────────────────────────────
   const [documents, setDocuments] = useState([])
   const [allMessages, setAllMessages] = useState({}) // { docId: [messages] }
@@ -28,6 +30,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [healthStatus, setHealthStatus] = useState('checking')
   const [theme, setTheme] = useState(() => localStorage.getItem('justask_theme') || 'light')
+  const [confirmDialog, setConfirmDialog] = useState({ isOpen: false, title: '', message: '', onConfirm: null })
   
   const chatEndRef = useRef(null)
   const inputRef = useRef(null)
@@ -105,39 +108,53 @@ function App() {
   })
 
   // ── Delete Document ───────────────────────────────────────────────
-  async function handleDeleteDocument(id, name, e) {
-    e.stopPropagation()
-    if (!confirm(`Delete "${name}"? This cannot be undone.`)) return
+  const closeConfirmDialog = () => setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null })
 
-    try {
-      await deleteDocument(id)
-      toast.success(`"${name}" deleted`)
-      if (selectedDocId === id) setSelectedDocId(null)
-      
-      // Cleanup chat history
-      setAllMessages(prev => {
-        const next = { ...prev }
-        delete next[id]
-        localStorage.setItem('justask_chats', JSON.stringify(next))
-        return next
-      })
-      
-      loadDocuments()
-    } catch (err) {
-      toast.error(err.message || 'Delete failed')
-    }
+  function handleDeleteDocument(id, name, e) {
+    e.stopPropagation()
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Delete Document',
+      message: `Are you sure you want to delete "${name}"? This action cannot be undone.`,
+      onConfirm: async () => {
+        closeConfirmDialog()
+        try {
+          await deleteDocument(id)
+          toast.success(`"${name}" deleted`)
+          if (selectedDocId === id) setSelectedDocId(null)
+          
+          // Cleanup chat history
+          setAllMessages(prev => {
+            const next = { ...prev }
+            delete next[id]
+            localStorage.setItem('justask_chats', JSON.stringify(next))
+            return next
+          })
+          
+          loadDocuments()
+        } catch (err) {
+          toast.error(err.message || 'Delete failed')
+        }
+      }
+    })
   }
 
   // ── Clear Chat ────────────────────────────────────────────────────
   function handleClearChat() {
     if (!selectedDocId) return
-    if (!confirm('Clear chat history for this document?')) return
-    
-    setAllMessages(prev => {
-      const next = { ...prev }
-      delete next[selectedDocId]
-      localStorage.setItem('justask_chats', JSON.stringify(next))
-      return next
+    setConfirmDialog({
+      isOpen: true,
+      title: 'Clear Chat History',
+      message: 'Are you sure you want to clear the chat history for this document?',
+      onConfirm: () => {
+        closeConfirmDialog()
+        setAllMessages(prev => {
+          const next = { ...prev }
+          delete next[selectedDocId]
+          localStorage.setItem('justask_chats', JSON.stringify(next))
+          return next
+        })
+      }
     })
   }
 
@@ -164,9 +181,13 @@ function App() {
       return next
     })
 
+    const historyToSend = (allMessages[selectedDocId] || [])
+      .slice(-6)
+      .map(m => ({ role: m.role, content: m.content }));
+
     try {
       await streamQuery(
-        query, 5, [selectedDocId],
+        query, 5, selectedDocId === 'global' ? null : [selectedDocId], historyToSend,
         (token) => {
           setAllMessages(prev => {
             const next = { ...prev }
@@ -254,9 +275,42 @@ function App() {
     }
   }
 
-  const activeDoc = documents.find(d => d.id === selectedDocId)
+  const activeDoc = selectedDocId === 'global' 
+    ? { id: 'global', original_filename: 'All Documents', filename: 'All Documents' } 
+    : documents.find(d => d.id === selectedDocId)
   const currentMessages = selectedDocId ? (allMessages[selectedDocId] || []) : []
   const location = useLocation()
+
+  if (!isAuthenticated) {
+    return (
+      <div className="password-gate">
+        <motion.div 
+          className="password-gate-card"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+        >
+          <div className="password-gate-icon">
+            <Zap size={32} color="var(--accent)" />
+          </div>
+          <h2>Just Ask</h2>
+          <p>Please enter the portfolio password to view the project.</p>
+          <form onSubmit={(e) => {
+            e.preventDefault()
+            const pw = e.target.password.value
+            if (pw === 'hireme2026') {
+              sessionStorage.setItem('justask_auth', 'true')
+              setIsAuthenticated(true)
+            } else {
+              toast.error('Incorrect password')
+            }
+          }}>
+            <input type="password" name="password" placeholder="Password" autoFocus />
+            <button type="submit">Access</button>
+          </form>
+        </motion.div>
+      </div>
+    )
+  }
 
   // Main app content (extracted so we can wrap it in a route)
   const appContent = (
@@ -297,6 +351,22 @@ function App() {
         </div>
 
         {/* Document List */}
+        <div className="doc-list-header">
+          <span>Global Knowledge Base</span>
+        </div>
+        <div 
+          className={`doc-item ${selectedDocId === 'global' ? 'active' : ''}`}
+          onClick={() => setSelectedDocId('global')}
+          style={{ margin: '0 8px 16px', background: selectedDocId === 'global' ? 'var(--accent)' : 'var(--surface-elevated)', color: selectedDocId === 'global' ? 'var(--text-accent)' : 'inherit' }}
+        >
+          <div className="doc-item-icon" style={{ background: selectedDocId === 'global' ? 'rgba(255,255,255,0.2)' : 'var(--accent-subtle)', color: selectedDocId === 'global' ? '#fff' : 'var(--accent)' }}>
+            <Sparkles size={16} />
+          </div>
+          <div className="doc-item-info">
+            <div className="doc-item-name">Chat with All Documents</div>
+          </div>
+        </div>
+
         <div className="doc-list-header">
           <span>Your Documents</span>
           <span className="doc-list-count">{documents.length}</span>
@@ -454,6 +524,29 @@ function App() {
                 }
               }}
             >
+              {/* Global Chat Card */}
+              <motion.div 
+                className="dash-card" 
+                onClick={() => setSelectedDocId('global')}
+                style={{ background: 'var(--accent)' }}
+                variants={{
+                  hidden: { opacity: 0, y: 40 },
+                  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } }
+                }}
+              >
+                <div className="dash-card-icon" style={{ background: 'rgba(255,255,255,0.2)', color: 'var(--text-accent)' }}>
+                  <Sparkles size={32} />
+                </div>
+                <div className="dash-card-content">
+                  <h3 style={{ color: 'var(--text-accent)' }}>Global Chat</h3>
+                  <p style={{ color: 'rgba(255,255,255,0.8)' }}>Chat with all your {documents.length} documents at once</p>
+                </div>
+                <div className="dash-card-action" style={{ color: 'var(--text-accent)' }}>
+                  <MessageSquare size={16} />
+                  <span>Chat</span>
+                </div>
+              </motion.div>
+
               {documents.map(doc => (
                 <motion.div 
                   key={doc.id} 
@@ -586,6 +679,28 @@ function App() {
           </>
         )}
       </main>
+
+      {/* ── Confirmation Modal ── */}
+      <AnimatePresence>
+        {confirmDialog.isOpen && (
+          <div className="modal-overlay" onClick={closeConfirmDialog}>
+            <motion.div 
+              className="modal-content"
+              onClick={e => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            >
+              <h3>{confirmDialog.title}</h3>
+              <p>{confirmDialog.message}</p>
+              <div className="modal-actions">
+                <button className="modal-btn cancel" onClick={closeConfirmDialog}>Cancel</button>
+                <button className="modal-btn confirm" onClick={confirmDialog.onConfirm}>Confirm</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   )
 

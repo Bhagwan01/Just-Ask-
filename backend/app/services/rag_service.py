@@ -63,10 +63,7 @@ class RAGService:
         self.llm_service = llm_service
         self.settings = settings
 
-        # BM25 index (rebuilt when documents change)
-        self._bm25_corpus: List[str] = []
-        self._bm25_metadata: List[Dict] = []
-        self._bm25_index: Optional[BM25Okapi] = None
+        logger.info("RAG service initialized")
 
         logger.info("RAG service initialized")
 
@@ -174,8 +171,7 @@ class RAGService:
 
             await db_session.commit()
 
-            # Rebuild BM25 index
-            await self._rebuild_bm25_index(db_session)
+            # BM25 index is now dynamically computed per query.
 
             # ── Step 8: Delete raw PDF if configured ─────────────────
             if self.settings.pdf_delete_after_processing:
@@ -224,6 +220,7 @@ class RAGService:
         db_session: AsyncSession,
         top_k: int = 5,
         document_ids: Optional[List[int]] = None,
+        history: Optional[List[Dict[str, str]]] = None,
     ) -> Dict[str, Any]:
         """
         Full RAG query pipeline.
@@ -310,6 +307,7 @@ class RAGService:
             answer = await self.llm_service.generate_rag_response(
                 question=question,
                 context_chunks=context_chunks,
+                history=history,
             )
             llm_ms = (time.perf_counter() - t_llm) * 1000
 
@@ -371,6 +369,7 @@ class RAGService:
         db_session: AsyncSession,
         top_k: int = 5,
         document_ids: Optional[List[int]] = None,
+        history: Optional[List[Dict[str, str]]] = None,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Streaming query pipeline — yields tokens as they arrive.
@@ -424,7 +423,7 @@ class RAGService:
         # Stream LLM response
         full_answer = ""
         async for token in self.llm_service.generate_rag_stream(
-            question=question, context_chunks=context_chunks
+            question=question, context_chunks=context_chunks, history=history
         ):
             full_answer += token
             yield {"token": token, "done": False}
@@ -453,6 +452,7 @@ class RAGService:
             model_used=self.llm_service.config.model,
         )
         db_session.add(query_record)
+        await db_session.commit()
 
         yield {
             "token": "",
@@ -484,8 +484,7 @@ class RAGService:
                 await db_session.delete(doc)
                 await db_session.commit()
 
-                # Rebuild BM25
-                await self._rebuild_bm25_index(db_session)
+                # BM25 index is now dynamically computed per query.
 
                 logger.info(f"Document {document_id} deleted successfully")
                 return True
@@ -509,31 +508,29 @@ class RAGService:
         """
         Combine vector similarity scores with BM25 keyword scores.
 
-        Uses weighted combination: vector_weight * vector_score + (1 - vector_weight) * bm25_score.
+        Uses dynamic BM25 rescoring on the retrieved vector chunks.
         """
         vector_weight = self.settings.hybrid_search_vector_weight
+
+        # 1. Build local BM25 index for the retrieved chunks
+        tokenized_corpus = [r.content.lower().split() for r in vector_results]
+        local_bm25 = BM25Okapi(tokenized_corpus) if tokenized_corpus else None
+        tokenized_query = query.lower().split()
+        
+        bm25_scores = []
+        max_bm25 = 1.0
+        if local_bm25:
+            bm25_scores = local_bm25.get_scores(tokenized_query)
+            max_bm25 = max(bm25_scores) if len(bm25_scores) > 0 and max(bm25_scores) > 0 else 1.0
 
         # Build scored results
         scored: List[Dict[str, Any]] = []
 
-        for result in vector_results:
+        for i, result in enumerate(vector_results):
             vector_score = result.score
 
-            # BM25 scoring
-            bm25_score = 0.0
-            if self._bm25_index is not None:
-                try:
-                    tokenized_query = query.lower().split()
-                    bm25_scores = self._bm25_index.get_scores(tokenized_query)
-
-                    # Find matching corpus entry
-                    for i, corpus_text in enumerate(self._bm25_corpus):
-                        if corpus_text[:100] == result.content[:100]:
-                            max_bm25 = max(bm25_scores) if max(bm25_scores) > 0 else 1.0
-                            bm25_score = bm25_scores[i] / max_bm25  # Normalize to 0-1
-                            break
-                except Exception:
-                    bm25_score = 0.0
+            # Normalize BM25 score
+            bm25_score = (bm25_scores[i] / max_bm25) if local_bm25 and i < len(bm25_scores) else 0.0
 
             # Combined score
             hybrid_score = (vector_weight * vector_score) + (
@@ -564,41 +561,3 @@ class RAGService:
                 deduped.append(item)
 
         return deduped[:top_k]
-
-    async def _rebuild_bm25_index(self, db_session: AsyncSession) -> None:
-        """Rebuild the BM25 index from all document chunks in the database."""
-        try:
-            result = await db_session.execute(
-                select(
-                    DocumentChunk.content,
-                    DocumentChunk.document_id,
-                    DocumentChunk.page_number,
-                    Document.original_filename,
-                ).join(Document).where(Document.status == DocumentStatus.COMPLETED)
-            )
-            rows = result.all()
-
-            if not rows:
-                self._bm25_index = None
-                self._bm25_corpus = []
-                self._bm25_metadata = []
-                return
-
-            self._bm25_corpus = [row[0] for row in rows]
-            self._bm25_metadata = [
-                {
-                    "document_id": row[1],
-                    "page_number": row[2],
-                    "document_name": row[3],
-                }
-                for row in rows
-            ]
-
-            tokenized = [doc.lower().split() for doc in self._bm25_corpus]
-            self._bm25_index = BM25Okapi(tokenized)
-
-            logger.info(f"BM25 index rebuilt with {len(self._bm25_corpus)} chunks")
-
-        except Exception as e:
-            logger.warning(f"Failed to rebuild BM25 index: {e}")
-            self._bm25_index = None

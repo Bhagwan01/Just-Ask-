@@ -9,6 +9,7 @@ python-dotenv==1.0.1
 python-multipart==0.0.12
 pydantic==2.9.2
 pydantic-settings==2.6.1
+slowapi==0.1.9
 
 # -- Processing --
 pypdf==5.1.0

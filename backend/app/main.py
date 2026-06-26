@@ -22,6 +22,10 @@ from app.core.logging import correlation_id_var, get_logger, setup_logging
 from app.core.middleware import CorrelationIDMiddleware, RequestLoggingMiddleware
 from app.core.settings import get_settings
 from app.models.schemas import ErrorResponse
+from app.core.limiter import limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi import _rate_limit_exceeded_handler
 
 logger = get_logger(__name__)
 
@@ -165,6 +169,11 @@ def create_app() -> FastAPI:
 
     # Correlation ID (innermost — sets the context var first)
     app.add_middleware(CorrelationIDMiddleware)
+
+    # Rate Limiting
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
 
     # ── Global exception handler ─────────────────────────────────
     @app.exception_handler(JustAskError)

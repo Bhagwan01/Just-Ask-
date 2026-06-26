@@ -99,12 +99,8 @@
 }
 
 .upload-zone-text strong {
-  color: #000;
-  background: var(--accent);
-  padding: 4px 10px;
-  border: var(--border-width) solid #000;
-  box-shadow: 2px 2px 0 #000;
-  display: inline-block;
+  color: var(--accent-dark);
+  font-weight: 700;
 }
 
 .upload-zone-hint {
@@ -158,9 +154,9 @@
 
 .doc-item:hover, .doc-item.active {
   background: var(--surface-hover);
-  border-color: var(--border);
+  border-color: var(--border-hover);
   box-shadow: var(--shadow-sm);
-  transform: translate(-2px, -2px);
+  transform: translateY(-2px);
 }
 
 .doc-item-icon {
@@ -377,9 +373,9 @@
 
 .suggestion-chip:hover {
   background: var(--accent);
-  color: #000;
-  transform: translate(2px, 2px);
-  box-shadow: none;
+  color: var(--text-accent);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 /* Chat Messages */
@@ -505,10 +501,9 @@
 }
 
 .source-card:hover {
-  background: var(--accent);
-  color: #000;
-  transform: translate(2px, 2px);
-  box-shadow: none;
+  border-color: var(--accent-light);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .source-page {
@@ -625,10 +620,10 @@
   width: 40px;
   height: 40px;
   border-radius: var(--radius-md);
-  border: var(--border-width) solid var(--border);
+  border: none;
   box-shadow: var(--shadow-sm);
   background: var(--gradient-accent);
-  color: #000;
+  color: var(--text-accent);
   font-weight: bold;
   cursor: pointer;
   display: flex;
@@ -639,8 +634,8 @@
 }
 
 .send-button:hover:not(:disabled) {
-  transform: translate(2px, 2px);
-  box-shadow: none;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .send-button:active:not(:disabled) {
@@ -767,16 +762,14 @@
 }
 
 .dash-card:hover {
-  transform: translate(4px, 4px);
-  box-shadow: none;
-  background: var(--accent);
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--accent-light);
 }
 
-.dash-card:hover .dash-card-content h3,
-.dash-card:hover .dash-card-content p,
-.dash-card:hover .dash-card-icon,
-.dash-card:hover .dash-card-action {
-  color: #000;
+.dash-card:hover .dash-card-icon {
+  background: var(--accent);
+  color: var(--text-accent);
 }
 
 .dash-card-icon {
@@ -897,3 +890,171 @@
   color: #ef4444;
 }
 
+/* ── Confirmation Modal ─────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-content h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.modal-content p {
+  margin: 0 0 12px 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.modal-btn {
+  padding: 8px 16px;
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: none;
+}
+
+.modal-btn.cancel {
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.modal-btn.cancel:hover {
+  background: var(--surface-elevated);
+}
+
+.modal-btn.confirm {
+  background: #ef4444;
+  color: #fff;
+  box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
+}
+
+.modal-btn.confirm:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px rgba(239, 68, 68, 0.4);
+}
+
+/* ── Password Gate ──────────────────────────────────────────────── */
+.password-gate {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+  z-index: 9999;
+}
+
+.password-gate-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 40px;
+  width: 90%;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: var(--shadow-lg);
+}
+
+.password-gate-icon {
+  width: 64px;
+  height: 64px;
+  background: var(--surface-sunken);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+  border: 1px solid var(--border);
+}
+
+.password-gate-card h2 {
+  margin: 0 0 8px 0;
+  color: var(--text-primary);
+  font-size: 24px;
+}
+
+.password-gate-card p {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin: 0 0 24px 0;
+}
+
+.password-gate-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.password-gate-card input {
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 16px;
+  transition: all var(--transition-fast);
+}
+
+.password-gate-card input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+
+.password-gate-card button {
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.password-gate-card button:hover {
+  background: var(--accent-hover);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}

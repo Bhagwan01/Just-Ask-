@@ -7,17 +7,16 @@ Provides:
 - GET /chat/history — Query history (paginated)
 """
 
-from __future__ import annotations
-
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.dependencies import get_db_session, get_rag_service
+from app.core.limiter import limiter
 from app.core.logging import get_logger
 from app.models.database import QueryHistory
 from app.models.schemas import ChatRequest, ChatResponse, SourceCitation
@@ -33,18 +32,21 @@ router = APIRouter(prefix="/chat", tags=["Chat"])
     summary="Ask a question about your documents",
     description="Queries uploaded documents using hybrid search (vector + keyword) and generates an answer with citations.",
 )
+@limiter.limit("5/minute")
 async def query_documents(
-    request: ChatRequest,
+    request: Request,
+    chat_request: ChatRequest,
     db_session: AsyncSession = Depends(get_db_session),
     rag_service=Depends(get_rag_service),
 ) -> ChatResponse:
     """Ask a natural language question about uploaded documents."""
 
     result = await rag_service.query(
-        question=request.query,
+        question=chat_request.query,
         db_session=db_session,
-        top_k=request.top_k,
-        document_ids=request.document_ids,
+        top_k=chat_request.top_k,
+        document_ids=chat_request.document_ids,
+        history=chat_request.history,
     )
 
     return ChatResponse(
@@ -71,8 +73,10 @@ async def query_documents(
     summary="Stream a response (Server-Sent Events)",
     description="Same as /query but returns tokens as they are generated via SSE.",
 )
+@limiter.limit("5/minute")
 async def stream_query(
-    request: ChatRequest,
+    request: Request,
+    chat_request: ChatRequest,
     db_session: AsyncSession = Depends(get_db_session),
     rag_service=Depends(get_rag_service),
 ):
@@ -81,10 +85,11 @@ async def stream_query(
     async def event_generator():
         try:
             async for chunk in rag_service.query_stream(
-                question=request.query,
+                question=chat_request.query,
                 db_session=db_session,
-                top_k=request.top_k,
-                document_ids=request.document_ids,
+                top_k=chat_request.top_k,
+                document_ids=chat_request.document_ids,
+                history=chat_request.history,
             ):
                 data = json.dumps(chunk, default=str)
                 yield f"data: {data}\n\n"

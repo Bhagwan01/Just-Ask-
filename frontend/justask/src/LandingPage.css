@@ -95,8 +95,8 @@
 }
 
 .theme-toggle-nav:hover {
-  transform: translate(2px, 2px);
-  box-shadow: none;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 .landing-cta-nav {
@@ -108,18 +108,19 @@
   font-weight: 700;
   font-family: var(--font-sans);
   background: var(--accent);
-  color: #000;
-  border: var(--border-width) solid var(--border);
-  box-shadow: var(--shadow-md);
+  color: var(--text-accent);
+  border: none;
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
   transition: all var(--transition-fast);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  border-radius: var(--radius-md);
 }
 
 .landing-cta-nav:hover {
-  transform: translate(4px, 4px);
-  box-shadow: none;
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
 }
 
 /* ── Hero ────────────────────────────────────────────────────────── */
@@ -150,10 +151,11 @@
   text-transform: uppercase;
   letter-spacing: 1px;
   background: var(--accent);
-  color: #000;
-  border: var(--border-width) solid var(--border);
+  color: var(--text-accent);
+  border: none;
   box-shadow: var(--shadow-sm);
   margin-bottom: 32px;
+  border-radius: var(--radius-full);
 }
 
 .landing-hero-title {
@@ -168,11 +170,11 @@
 .landing-hero-highlight {
   display: inline-block;
   background: var(--accent);
-  color: #000;
+  color: var(--text-accent);
   padding: 4px 16px;
-  border: var(--border-width) solid var(--border);
-  box-shadow: var(--shadow-md);
-  transform: rotate(-1deg);
+  border: none;
+  box-shadow: var(--shadow-sm);
+  border-radius: var(--radius-sm);
 }
 
 .landing-hero-subtitle {
@@ -196,18 +198,19 @@
   font-weight: 700;
   font-family: var(--font-sans);
   background: var(--accent);
-  color: #000;
-  border: var(--border-width) solid var(--border);
-  box-shadow: var(--shadow-lg);
+  color: var(--text-accent);
+  border: none;
+  box-shadow: var(--shadow-md);
   cursor: pointer;
   transition: all var(--transition-fast);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  border-radius: var(--radius-lg);
 }
 
 .landing-cta-hero:hover {
-  transform: translate(6px, 6px);
-  box-shadow: none;
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
 }
 
 .landing-hero-stats {
@@ -251,7 +254,8 @@
 .hero-mockup {
   background: var(--surface-elevated);
   border: var(--border-width) solid var(--border);
-  box-shadow: 8px 8px 0 var(--shadow-color);
+  box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
@@ -296,10 +300,11 @@
 
 .hero-mockup-msg.user-msg {
   background: var(--accent);
-  color: #000;
+  color: var(--text-accent);
   font-weight: 600;
   align-self: flex-end;
   max-width: 85%;
+  border-bottom-right-radius: var(--radius-sm);
 }
 
 .hero-mockup-msg.ai-msg {
@@ -316,9 +321,10 @@
   font-weight: 700;
   color: var(--text-muted);
   padding: 6px 12px;
-  border: 2px solid var(--border);
+  border: 1px solid var(--border);
   background: var(--accent-subtle);
   align-self: flex-start;
+  border-radius: var(--radius-sm);
 }
 
 .landing-scroll-hint {
@@ -396,10 +402,11 @@
   text-transform: uppercase;
   letter-spacing: 2px;
   background: var(--accent);
-  color: #000;
-  border: var(--border-width) solid var(--border);
+  color: var(--text-accent);
+  border: none;
   box-shadow: var(--shadow-sm);
   margin-bottom: 20px;
+  border-radius: var(--radius-sm);
 }
 
 .landing-section-title {
@@ -431,6 +438,7 @@
   box-shadow: var(--shadow-md);
   padding: 36px 28px;
   position: relative;
+  border-radius: var(--radius-lg);
 }
 
 .landing-step-card:hover .landing-step-desc {
@@ -506,6 +514,13 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  border-radius: var(--radius-lg);
+  transition: all var(--transition-fast);
+}
+
+.landing-testimonial-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
 }
 
 .landing-testimonial-card:hover .landing-testimonial-quote,
@@ -555,8 +570,8 @@
 }
 
 .landing-testimonial-card:hover .landing-testimonial-avatar {
-  background: #000;
-  color: var(--accent);
+  background: var(--accent-secondary);
+  color: var(--text-accent);
 }
 
 .landing-testimonial-name {
