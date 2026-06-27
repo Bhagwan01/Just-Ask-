@@ -60,7 +60,7 @@ ENV PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \
     ENV=production \
     LOG_FORMAT=json \
-    CORS_ORIGINS=*
+    CORS_ORIGINS='["*"]'
 
 # Expose port (Hugging Face Spaces routes to 7860)
 EXPOSE 7860
