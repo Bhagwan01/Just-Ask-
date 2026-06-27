@@ -29,8 +29,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # -- Stage 2: Runtime ------------------------------------------------
 FROM python:3.11-slim AS runtime
 
-# Security: run as non-root user
-RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser
+# Security: run as non-root user (Hugging Face Spaces requires UID 1000)
+RUN groupadd -r appuser && useradd -r -u 1000 -g appuser -d /app -s /sbin/nologin appuser
 
 WORKDIR /app
 
@@ -59,14 +59,15 @@ ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     ENV=production \
-    LOG_FORMAT=json
+    LOG_FORMAT=json \
+    CORS_ORIGINS=*
 
-# Expose port
-EXPOSE 8000
+# Expose port (Hugging Face Spaces routes to 7860)
+EXPOSE 7860
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/api/v1/health/live || exit 1
+    CMD curl -f http://localhost:7860/api/v1/health/live || exit 1
 
-# Start the application
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# Start the application with proxy headers enabled for accurate rate-limiting
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1", "--proxy-headers", "--forwarded-allow-ips", "*"]
